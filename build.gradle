@@ -1,0 +1,83 @@
+import groovy.json.JsonBuilder
+
+group 'com.bsgfb'
+version '1.0-SNAPSHOT'
+
+apply plugin: 'groovy'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'org.codehaus.groovy:groovy-all:2.3.11'
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+}
+
+def wordsFrequency = { List<String> dataSet ->
+    dataSet.join(' ').split(' ').groupBy { it }.collectEntries { [it.key, it.value.size()] }
+}
+
+def cleanText = { String text ->
+    text.replaceAll(/(<\w+ \/>)/, '').replaceAll(/[\W\d\s&&[^']]/, ' ').replaceAll(' +', ' ').toLowerCase()
+}
+
+def convertFolder = { String path ->
+    new File(path).listFiles({ File file, String name -> name.endsWith('.txt') } as FilenameFilter).collect {
+        cleanText it.text
+    }
+}
+
+task convertImdbDataSet << {
+    def dataSetPath = System.getProperty('dataset', '')
+    println "Data set path [$dataSetPath]"
+
+    if (dataSetPath == '') return
+
+    def trainNeg = convertFolder("$dataSetPath/train/neg")
+    def trainPos = convertFolder("$dataSetPath/train/pos")
+
+    def frequencyWordsNeg = wordsFrequency(trainNeg)
+    def frequencyWordsPos = wordsFrequency(trainPos)
+
+    def amountClassesNeg = trainNeg.size()
+    def amountClassesPos = trainPos.size()
+
+    def wordsAmountNeg = frequencyWordsNeg.values().sum()
+    def wordsAmountPos = frequencyWordsPos.values().sum()
+
+    def trainWords = [:]
+
+    def initTrainWords = { word ->
+        if (!trainWords.containsKey(word))
+            trainWords.put(word, [neg: 0, pos: 0])
+    }
+
+    frequencyWordsNeg.each { word, amount ->
+        initTrainWords(word)
+        trainWords[word].neg = amount
+    }
+
+    frequencyWordsPos.each { word, amount ->
+        initTrainWords(word)
+        trainWords[word].pos = amount
+    }
+
+    def trainedObject = [
+            classes: [neg: amountClassesNeg, pos: amountClassesPos],
+            words  : [neg: wordsAmountNeg, pos: wordsAmountPos],
+            dataset: trainWords
+    ]
+
+    println "classes: [neg: $amountClassesNeg, pos: $amountClassesPos]"
+    println "words: [neg: $wordsAmountNeg, pos: $wordsAmountPos]"
+
+    def outFile = new File("${project.projectDir}/src/main/resources/train.json")
+    outFile.createNewFile()
+    outFile.write new JsonBuilder(trainedObject).toPrettyString()
+}
+
+
+task someTest << {
+    println "kek 222 sd 2 sdsad ) . dsad123".replaceAll(/[\W\d\s]/, ' ').replaceAll(' +', ' ')
+}
